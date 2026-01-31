@@ -249,9 +249,9 @@ function App() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 pb-12">
+      <main className="max-w-7xl mx-auto px-4 pb-12 grow flex flex-col">
         {gameStatus === 'idle' ? (
-          <div className="flex flex-col items-center justify-center min-h-[60vh] animate-fade-in-up">
+          <section aria-label="Level Selection" className="flex flex-col items-center justify-center min-h-[60vh] animate-fade-in-up">
             <div className="text-center mb-16 max-w-xl">
               <h2 className="text-4xl font-extrabold mb-6 text-gray-900 dark:text-white">Review Vocabulary</h2>
               <p className="text-gray-600 dark:text-gray-400 text-lg">
@@ -284,9 +284,9 @@ function App() {
                 </button>
               ))}
             </div>
-          </div>
+          </section>
         ) : (
-          <div className="relative flex flex-col items-center justify-center min-h-[70vh]">
+          <section aria-label="Game Board" className="relative flex flex-col items-center justify-center min-h-[70vh]">
 
             <div className="mb-4 w-full max-w-2xl flex justify-between items-center text-sm font-medium text-gray-500 dark:text-gray-400 px-2">
               <span>Level: <strong className="text-gray-900 dark:text-white capitalize">{currentLevel}</strong></span>
@@ -376,9 +376,13 @@ function App() {
                 </div>
               </div>
             )}
-          </div>
+          </section>
         )}
       </main>
+
+      <footer className="py-6 text-center text-gray-500 dark:text-gray-400 text-sm">
+        <p>© 2026 FlashDash. All rights reserved.</p>
+      </footer>
     </div>
   );
 }
