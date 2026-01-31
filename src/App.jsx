@@ -266,7 +266,7 @@ function App() {
             </div>
           </div>
         ) : (
-          <div className="relative flex flex-col items-center">
+          <div className="relative flex flex-col items-center justify-center min-h-[70vh]">
 
             <div className="mb-4 w-full max-w-2xl flex justify-between items-center text-sm font-medium text-gray-500 dark:text-gray-400 px-2">
               <span>Level: <strong className="text-gray-900 dark:text-white capitalize">{currentLevel}</strong></span>
