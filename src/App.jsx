@@ -11,6 +11,7 @@ function App() {
   const [timer, setTimer] = useState(0);
   const [timerIntervalId, setTimerIntervalId] = useState(null);
   const [bestTimes, setBestTimes] = useState({});
+  const [playedWords, setPlayedWords] = useState([]); // Track words in current game
   const [theme, setTheme] = useState(() => {
     // Default to light if no preference saved, or check system pref
     if (typeof window !== 'undefined') {
@@ -78,6 +79,8 @@ function App() {
     const levelData = vocabularyData[level];
     const shuffledData = [...levelData].sort(() => 0.5 - Math.random()).slice(0, 6);
 
+    setPlayedWords(shuffledData); // Store the words for this round
+
     const gameCards = [];
     shuffledData.forEach((item, index) => {
       gameCards.push({
@@ -87,7 +90,8 @@ function App() {
         lang: 'en',
         isFlipped: false,
         isMatched: false,
-        isShaking: false
+        isShaking: false,
+        isCorrect: false // Helper for visual green state before hiding
       });
       gameCards.push({
         id: `th-${index}`,
@@ -96,7 +100,8 @@ function App() {
         lang: 'th',
         isFlipped: false,
         isMatched: false,
-        isShaking: false
+        isShaking: false,
+        isCorrect: false
       });
     });
 
@@ -115,6 +120,7 @@ function App() {
       gameStatus !== 'playing' ||
       clickedCard.isMatched ||
       clickedCard.isFlipped ||
+      clickedCard.isCorrect || // Prevent clicking if already marked correct (waiting to hide)
       flippedCards.length >= 2
     ) {
       return;
@@ -138,21 +144,35 @@ function App() {
     const isMatch = card1.pairId === card2.pairId;
 
     if (isMatch) {
-      const matchedCards = currentCards.map(card =>
+      // 1. Mark as correct (Green border, stay visible)
+      const correctCards = currentCards.map(card =>
         (card.id === card1.id || card.id === card2.id)
-          ? { ...card, isMatched: true, isFlipped: true }
+          ? { ...card, isCorrect: true, isFlipped: true }
           : card
       );
-      setCards(matchedCards);
-      setFlippedCards([]);
-      setMatchedPairs(prev => {
-        const newCount = prev + 1;
-        if (newCount === 6) {
-          setGameStatus('won');
-          updateBestTime(currentLevel, timer);
-        }
-        return newCount;
-      });
+      setCards(correctCards);
+
+      const isLastMatch = matchedPairs === 5;
+      const delay = isLastMatch ? 1000 : 500;
+
+      // 2. Wait 0.5 second before hiding (or 1s if last pair)
+      setTimeout(() => {
+        const matchedCards = correctCards.map(card =>
+          (card.id === card1.id || card.id === card2.id)
+            ? { ...card, isMatched: true }
+            : card
+        );
+        setCards(matchedCards);
+        setFlippedCards([]);
+        setMatchedPairs(prev => {
+          const newCount = prev + 1;
+          if (newCount === 6) {
+            setGameStatus('won');
+            updateBestTime(currentLevel, timer);
+          }
+          return newCount;
+        });
+      }, delay);
     } else {
       const shakenCards = currentCards.map(card =>
         (card.id === card1.id || card.id === card2.id)
@@ -300,7 +320,7 @@ function App() {
                       absolute inset-0 backface-hidden rotate-y-180
                       bg-white dark:bg-gray-800 rounded-xl
                       flex items-center justify-center p-4 text-center
-                      border-2 ${card.isMatched ? 'border-emerald-500' : 'border-emerald-200 dark:border-emerald-800'}
+                      border-2 ${(card.isMatched || card.isCorrect) ? 'border-emerald-500' : 'border-emerald-200 dark:border-emerald-800'}
                     `}>
                       <span className={`
                         ${card.lang === 'th' ? 'text-lg' : 'text-xl'} 
@@ -317,8 +337,8 @@ function App() {
             {/* Victory Modal */}
             {gameStatus === 'won' && (
               <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                <div className="absolute inset-0 bg-gray-900/20 dark:bg-black/50 backdrop-blur-sm animate-fade-in"></div>
-                <div className="relative bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-sm w-full animate-bounce-in text-center border border-gray-100 dark:border-gray-700">
+                <div className="absolute inset-0 bg-gray-900/30 dark:bg-black/60 backdrop-blur-sm animate-fade-in"></div>
+                <div className="relative bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-md w-full animate-bounce-in text-center border border-gray-100 dark:border-gray-700 max-h-[90vh] overflow-y-auto">
                   <div className="mx-auto w-16 h-16 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mb-6 text-3xl">
                     🏆
                   </div>
@@ -326,6 +346,18 @@ function App() {
                   <p className="text-gray-500 dark:text-gray-400 mb-8">
                     You completed the <strong>{currentLevel}</strong> level in <span className="text-gray-900 dark:text-white font-mono font-bold">{formatTime(timer)}</span>
                   </p>
+
+                  <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 mb-6 text-left">
+                    <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Vocabulary Review</h3>
+                    <div className="space-y-2">
+                      {playedWords.map((word, idx) => (
+                        <div key={idx} className="flex justify-between items-center text-sm border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0">
+                          <span className="font-medium text-gray-900 dark:text-white">{word.en}</span>
+                          <span className="text-gray-600 dark:text-gray-300">{word.th}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
                   <div className="grid grid-cols-2 gap-3">
                     <button
