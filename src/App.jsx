@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { vocabularyData } from './data';
+import WordDetailModal from './components/WordDetailModal';
 import './App.css';
 
 function App() {
@@ -12,6 +13,7 @@ function App() {
   const [timerIntervalId, setTimerIntervalId] = useState(null);
   const [bestTimes, setBestTimes] = useState({});
   const [playedWords, setPlayedWords] = useState([]); // Track words in current game
+  const [selectedWord, setSelectedWord] = useState(null); // For detail modal
   const [theme, setTheme] = useState(() => {
     // Default to light if no preference saved, or check system pref
     if (typeof window !== 'undefined') {
@@ -198,12 +200,44 @@ function App() {
     setGameStatus('idle');
     setCurrentLevel(null);
     setTimer(0);
+    setSelectedWord(null);
   };
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  // Helper to clean word for TTS (remove (n), (v), etc.)
+  const cleanWordForAudio = (text) => {
+    return text.replace(/\s*\(.*?\)\s*/g, '').trim();
+  };
+
+  const playAudio = async (text) => {
+    const word = cleanWordForAudio(text);
+
+    try {
+      // Try to get natural audio from API
+      const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
+      if (res.ok) {
+        const data = await res.json();
+        // Find first valid audio in ANY entry
+        const apiAudio = data.flatMap(d => d.phonetics || []).find(p => p.audio)?.audio;
+
+        if (apiAudio) {
+          new Audio(apiAudio).play();
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Audio fetch failed, falling back to TTS", e);
+    }
+
+    // Fallback to robotic TTS
+    const utterance = new SpeechSynthesisUtterance(word);
+    utterance.lang = 'en-US';
+    window.speechSynthesis.speak(utterance);
   };
 
   return (
@@ -348,12 +382,29 @@ function App() {
                   </p>
 
                   <div className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 mb-6 text-left">
-                    <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Vocabulary Review</h3>
+                    <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                      <span>Vocabulary Review</span>
+                      <span className="text-[10px] font-normal lowercase bg-gray-200 dark:bg-gray-700 px-1.5 rounded">click to learn</span>
+                    </h3>
                     <div className="space-y-2">
                       {playedWords.map((word, idx) => (
                         <div key={idx} className="flex justify-between items-center text-sm border-b border-gray-100 dark:border-gray-800 last:border-0 pb-2 last:pb-0">
-                          <span className="font-medium text-gray-900 dark:text-white">{word.en}</span>
-                          <span className="text-gray-600 dark:text-gray-300">{word.th}</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => playAudio(word.en)}
+                              className="p-1.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:scale-110 transition-transform flex-shrink-0"
+                              title="Listen"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                            </button>
+                            <button
+                              onClick={() => setSelectedWord(word.en)}
+                              className="text-left font-medium text-gray-900 dark:text-white hover:text-emerald-600 dark:hover:text-emerald-400 hover:underline decoration-emerald-500/30 underline-offset-4 transition-all"
+                            >
+                              {word.en}
+                            </button>
+                          </div>
+                          <span className="text-gray-600 dark:text-gray-300 text-right">{word.th}</span>
                         </div>
                       ))}
                     </div>
@@ -379,6 +430,14 @@ function App() {
           </section>
         )}
       </main>
+
+      {/* Word Detail Modal */}
+      {selectedWord && (
+        <WordDetailModal
+          word={selectedWord}
+          onClose={() => setSelectedWord(null)}
+        />
+      )}
 
       <footer className="py-6 text-center text-gray-500 dark:text-gray-400 text-sm">
         <p>© 2026 FlashDash. All rights reserved.</p>
