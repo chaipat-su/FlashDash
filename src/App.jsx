@@ -1,21 +1,29 @@
 import { useState, useEffect } from 'react';
-import { vocabularyData } from './data';
+import { useGame } from './hooks/useGame';
+import { playAudio } from './utils/audio';
+import { getLevels } from './utils/vocabulary';
 import WordDetailModal from './components/WordDetailModal';
 import './App.css';
 
 function App() {
-  const [currentLevel, setCurrentLevel] = useState(null);
-  const [cards, setCards] = useState([]);
-  const [flippedCards, setFlippedCards] = useState([]);
-  const [matchedPairs, setMatchedPairs] = useState(0);
-  const [gameStatus, setGameStatus] = useState('idle'); // idle, playing, won
-  const [timer, setTimer] = useState(0);
-  const [timerIntervalId, setTimerIntervalId] = useState(null);
-  const [bestTimes, setBestTimes] = useState({});
-  const [playedWords, setPlayedWords] = useState([]); // Track words in current game
-  const [selectedWord, setSelectedWord] = useState(null); // For detail modal
+  // Game State Hooks
+  const {
+    gameStatus,
+    currentLevel,
+    cards,
+    timer,
+    bestTimes,
+    playedWords,
+    startGame,
+    handleCardClick,
+    resetGame,
+    matchedPairs
+  } = useGame();
+
+  const [selectedWord, setSelectedWord] = useState(null); // UI State
+
+  // Theme State (UI Only)
   const [theme, setTheme] = useState(() => {
-    // Default to light if no preference saved, or check system pref
     if (typeof window !== 'undefined') {
       const savedTheme = localStorage.getItem('flashdash-theme');
       if (savedTheme) return savedTheme;
@@ -39,205 +47,10 @@ function App() {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
   };
 
-  // Load best times on init
-  useEffect(() => {
-    const saved = localStorage.getItem('flashdash-best-times');
-    if (saved) {
-      setBestTimes(JSON.parse(saved));
-    }
-  }, []);
-
-  // Stop timer on unmount or game end
-  useEffect(() => {
-    return () => {
-      if (timerIntervalId) clearInterval(timerIntervalId);
-    };
-  }, [timerIntervalId]);
-
-  useEffect(() => {
-    if (gameStatus === 'playing') {
-      const id = setInterval(() => {
-        setTimer(prev => prev + 1);
-      }, 1000);
-      setTimerIntervalId(id);
-    } else {
-      if (timerIntervalId) clearInterval(timerIntervalId);
-    }
-  }, [gameStatus]);
-
-  const updateBestTime = (level, time) => {
-    setBestTimes(prev => {
-      const currentBest = prev[level];
-      if (!currentBest || time < currentBest) {
-        const newBestTimes = { ...prev, [level]: time };
-        localStorage.setItem('flashdash-best-times', JSON.stringify(newBestTimes));
-        return newBestTimes;
-      }
-      return prev;
-    });
-  };
-
-  const startGame = (level) => {
-    const levelData = vocabularyData[level];
-    const shuffledData = [...levelData].sort(() => 0.5 - Math.random()).slice(0, 6);
-
-    setPlayedWords(shuffledData); // Store the words for this round
-
-    const gameCards = [];
-    shuffledData.forEach((item, index) => {
-      gameCards.push({
-        id: `en-${index}`,
-        pairId: index,
-        content: item.en,
-        lang: 'en',
-        isFlipped: false,
-        isMatched: false,
-        isShaking: false,
-        isCorrect: false // Helper for visual green state before hiding
-      });
-      gameCards.push({
-        id: `th-${index}`,
-        pairId: index,
-        content: item.th,
-        lang: 'th',
-        isFlipped: false,
-        isMatched: false,
-        isShaking: false,
-        isCorrect: false
-      });
-    });
-
-    gameCards.sort(() => 0.5 - Math.random());
-
-    setCards(gameCards);
-    setCurrentLevel(level);
-    setMatchedPairs(0);
-    setFlippedCards([]);
-    setTimer(0);
-    setGameStatus('playing');
-  };
-
-  const handleCardClick = (clickedCard) => {
-    if (
-      gameStatus !== 'playing' ||
-      clickedCard.isMatched ||
-      clickedCard.isFlipped ||
-      clickedCard.isCorrect || // Prevent clicking if already marked correct (waiting to hide)
-      flippedCards.length >= 2
-    ) {
-      return;
-    }
-
-    const newCards = cards.map(card =>
-      card.id === clickedCard.id ? { ...card, isFlipped: true } : card
-    );
-    setCards(newCards);
-
-    const newFlippedCards = [...flippedCards, clickedCard];
-    setFlippedCards(newFlippedCards);
-
-    if (newFlippedCards.length === 2) {
-      checkForMatch(newFlippedCards, newCards);
-    }
-  };
-
-  const checkForMatch = (currentFlipped, currentCards) => {
-    const [card1, card2] = currentFlipped;
-    const isMatch = card1.pairId === card2.pairId;
-
-    if (isMatch) {
-      // 1. Mark as correct (Green border, stay visible)
-      const correctCards = currentCards.map(card =>
-        (card.id === card1.id || card.id === card2.id)
-          ? { ...card, isCorrect: true, isFlipped: true }
-          : card
-      );
-      setCards(correctCards);
-
-      const isLastMatch = matchedPairs === 5;
-      const delay = isLastMatch ? 1000 : 500;
-
-      // 2. Wait 0.5 second before hiding (or 1s if last pair)
-      setTimeout(() => {
-        const matchedCards = correctCards.map(card =>
-          (card.id === card1.id || card.id === card2.id)
-            ? { ...card, isMatched: true }
-            : card
-        );
-        setCards(matchedCards);
-        setFlippedCards([]);
-        setMatchedPairs(prev => {
-          const newCount = prev + 1;
-          if (newCount === 6) {
-            setGameStatus('won');
-            updateBestTime(currentLevel, timer);
-          }
-          return newCount;
-        });
-      }, delay);
-    } else {
-      const shakenCards = currentCards.map(card =>
-        (card.id === card1.id || card.id === card2.id)
-          ? { ...card, isShaking: true }
-          : card
-      );
-      setCards(shakenCards);
-
-      setTimeout(() => {
-        setCards(prevCards =>
-          prevCards.map(card =>
-            (card.id === card1.id || card.id === card2.id)
-              ? { ...card, isFlipped: false, isShaking: false }
-              : card
-          )
-        );
-        setFlippedCards([]);
-      }, 1000);
-    }
-  };
-
-  const resetGame = () => {
-    setGameStatus('idle');
-    setCurrentLevel(null);
-    setTimer(0);
-    setSelectedWord(null);
-  };
-
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-  };
-
-  // Helper to clean word for TTS (remove (n), (v), etc.)
-  const cleanWordForAudio = (text) => {
-    return text.replace(/\s*\(.*?\)\s*/g, '').trim();
-  };
-
-  const playAudio = async (text) => {
-    const word = cleanWordForAudio(text);
-
-    try {
-      // Try to get natural audio from API
-      const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
-      if (res.ok) {
-        const data = await res.json();
-        // Find first valid audio in ANY entry
-        const apiAudio = data.flatMap(d => d.phonetics || []).find(p => p.audio)?.audio;
-
-        if (apiAudio) {
-          new Audio(apiAudio).play();
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn("Audio fetch failed, falling back to TTS", e);
-    }
-
-    // Fallback to robotic TTS
-    const utterance = new SpeechSynthesisUtterance(word);
-    utterance.lang = 'en-US';
-    window.speechSynthesis.speak(utterance);
   };
 
   return (
@@ -294,7 +107,7 @@ function App() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 w-full max-w-3xl">
-              {Object.keys(vocabularyData).map((level) => (
+              {getLevels().map((level) => (
                 <button
                   key={level}
                   onClick={() => startGame(level)}
